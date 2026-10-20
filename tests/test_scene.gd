@@ -29,16 +29,30 @@ func run() -> void:
 	root.add_child(game)
 	await process_frame
 	await physics_frame
-	check(game.hud.overlay.visible and game.scene == "menu", "menu initially visible")
-	game._action("factions")
+	check(game.hud.scene_file_path == "res://scenes/start_menu.tscn" and game.scene == "menu", "standalone start scene")
+	check(game.world == null and game.hud.map_container == null and not game.hud.overlay.visible, "start has no map or modal")
+	check(game.hud.find_child("GameLogo", true, false).texture != null, "original logo imported")
+	game.hud.action_requested.emit("settings")
+	game._setting("effects", false)
+	check(not game.hud.dynamic_effects and game.world == null, "settings work before world exists")
+	game._action("back")
+	game._load_file("user://missing-startup-test.json")
+	check(game.scene == "menu" and game.hud.notice_panel.visible and game.world == null, "failed load stays on start with visible reason")
+	game.hud.find_child("StartButton", true, false).pressed.emit()
 	await process_frame
-	check(game.hud.faction_cards.size() == 4, "four original faction cards")
-	game.hud._choose_faction(2)
-	check(game.hud.faction_draft.id == "guild", "flag selection updates draft")
-	game._start_game(game.hud.faction_draft)
+	check(game.hud.scene_file_path == "res://scenes/faction_selection.tscn", "start signal enters separate faction scene")
+	check(game.hud.faction_cards.size() == 4 and not game.hud.overlay.visible and game.world == null, "four factions without modal or background map")
+	game.hud.faction_cards[2].pressed.emit()
+	check(game.hud.faction_draft.id == "guild" and game.state.faction.id != "guild", "selection changes draft only")
+	game.hud.faction_name.text = "新贝尔福工匠"
+	game.hud.faction_description.text = "在边地重建家园的工匠。"
+	game.hud.find_child("ConfirmFaction", true, false).pressed.emit()
 	await process_frame
 	await physics_frame
-	check(game.scene == "game" and not game.hud.overlay.visible, "start game closes modal")
+	check(game.scene == "game" and game.hud.scene_file_path == "res://scenes/game.tscn" and not game.hud.overlay.visible, "confirmation enters independent game scene")
+	check(game.state.faction.id == "guild" and game.state.faction.name == "新贝尔福工匠", "confirmed custom identity reaches model")
+	check(not game.world.dynamic_effects, "game inherits effects preference")
+	game._setting("effects", true)
 	## <summary>射线起点或测试中的市政厅坐标。</summary>
 	var origin = Vector2i(10, 8)
 	## <summary>射线投影坐标或模型局部位置。</summary>
@@ -183,6 +197,30 @@ func run() -> void:
 
 	for cue in BelfortAudio.CLIPS:
 		check(BelfortAudio.CLIPS[cue].get_length() > 0, "audio clip imported " + cue)
+	# 在有会话的情况下经过势力返回与继续，检查地图复用、草稿隔离及读档。
+	var retained_world = game.world
+	var retained_turn = game.state.turn
+	game._action("menu")
+	check(game.scene == "menu" and not game.game_hud.visible, "return to independent start")
+	check(game.game_hud.process_mode == Node.PROCESS_MODE_DISABLED and game.map_viewport.render_target_update_mode == SubViewport.UPDATE_DISABLED, "hidden gameplay stops processing and rendering")
+	game._action("factions")
+	game.hud.faction_cards[3].pressed.emit()
+	var escape = InputEventKey.new()
+	escape.keycode = KEY_ESCAPE
+	escape.pressed = true
+	game._unhandled_key_input(escape)
+	check(game.scene == "menu" and game.state.faction.id == "guild", "escape abandons faction draft")
+	game._action("resume")
+	check(game.world == retained_world and game.state.turn == retained_turn and game.hud.visible, "resume restores existing world and rules")
+	game._action("menu")
+	game._action("continue")
+	check(game.scene == "game" and game.state.faction.name == "新贝尔福工匠", "continue loads auto save from start")
+	# 验证冷启动读档无需先经过势力确认。
+	var cold_game: BelfortGame = load("res://scenes/main.tscn").instantiate()
+	root.add_child(cold_game)
+	cold_game._action("continue")
+	check(cold_game.scene == "game" and cold_game.world != null and cold_game.state.faction.id == "guild", "cold continue creates gameplay directly after validation")
+	cold_game.queue_free()
 	print("SCENE TESTS PASSED: ", checks)
 	game.queue_free()
 	await process_frame

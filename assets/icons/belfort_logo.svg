@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<!-- Original Belfort mark: a hexagonal frontier, an open gate and a road home. -->
+<path fill="#11171d" d="M256 8 478 136v240L256 504 34 376V136Z"/>
+<path fill="#20272e" stroke="#45515b" stroke-width="8" d="M256 33 456 149v214L256 479 56 363V149Z"/>
+<path fill="none" stroke="#e6c45b" stroke-width="10" d="m82 203 0-40 174-101 174 101v40M82 306v44l77 45m194 0 77-45v-44"/>
+<path fill="#36454e" d="m104 314 152-86 152 86-152 88Z"/>
+<path fill="#17262e" d="M104 314v28l152 88v-28Zm304 0v28l-152 88v-28Z"/>
+<path fill="#e6c45b" d="M150 291V174h27v24h25v-24h27v24h54v-24h27v24h25v-24h27v117l-45 26v-69h-24v-23h-74v23h-24v69Z"/>
+<path fill="#b89859" d="m150 291 45 26v-69l-18-11v-39h-27Zm212 0-45 26v-69l18-11v-39h27Z"/>
+<path fill="#11171d" d="M233 293v-36a23 23 0 0 1 46 0v36l-23 13Z"/>
+<path fill="#83cfbf" d="m246 302 10 6 10-6 25 89-35 21-35-21Z"/>
+<path fill="#83cfbf" d="m256 102 12 20-12 20-12-20Z"/>
+<path fill="none" stroke="#90a5ab" stroke-width="5" d="m112 270 20-12m248 0 20 12"/>
+</svg>

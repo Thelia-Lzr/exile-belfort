@@ -7,6 +7,7 @@
 | 文件 | 对象与职责 | 初学者应关注的概念 |
 |---|---|---|
 | `scripts/game_state.gd` | `BelfortState`，纯规则和 JSON 数据 | Dictionary、Array、Vector2i、校验与事务 |
+| `scripts/front_screen.gd`、`start_menu.gd`、`faction_selection.gd` | 独立前置页面，复用 HUD 的主题、控件与档案编辑 | 场景继承、布局、草稿与信号 |
 | `scripts/main.gd` | `BelfortGame`，流程与系统连接 | 场景生命周期、信号、输入与状态 |
 | `scripts/world_view.gd` | `BelfortWorld`，地图、相机和拾取 | Node3D、Camera3D、碰撞、坐标转换 |
 | `scripts/model_factory.gd` | `BelfortModels`，网格与材质工厂 | MeshInstance3D、基础网格、缓存 |
@@ -20,6 +21,18 @@
 | `tests/test_scene.gd` | 场景集成检查 | await、真实场景实例和动画验证 |
 
 核心 `.gd` 方法和数据带有中文 XML 风格注释；新增方法附用途说明。`tools/document_gd.py` 保留了初版注释生成映射，新增模块的说明以源码为准。
+
+## 启动与场景切换
+
+`scenes/main.tscn` 保持为应用入口，`BelfortGame` 负责会话、偏好、存档和信号路由。三个独立页面为：
+
+- `scenes/start_menu.tscn`：开始页、Logo 与继续 / 读取 / 设置入口。
+- `scenes/faction_selection.tscn`：四势力选择和可编辑身份；确认之前只改草稿。
+- `scenes/game.tscn`：原有游戏 HUD；控制器在首次新建或成功读档后为其挂接三维地图。
+
+前置页面继承 `BelfortFrontScreen`，仅复用 `BelfortHUD` 的主题、装饰、反馈和设置；不创建地图、资源栏或建造栏。前置场景切换时移除并释放旧页面。开始与势力选择不调用菜单遮罩；暂停、设置和文件选择仍使用已有的遮罩或窗口。
+
+已建立的游戏场景在返回开始页时隐藏并停用处理及子视口渲染，继续当前聚落时恢复同一个场景，避免丢失未结束回合的撤销记录。开始页成功读档也可以直接进入游戏，失败留在原页面显示原因。存档格式、规则和原子保存方法保持不变。
 
 ## 一次建造如何流动
 
