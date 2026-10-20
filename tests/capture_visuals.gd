@@ -11,18 +11,46 @@ func capture(file_name: String) -> void:
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png(OUTPUT + "/" + file_name + ".png")
 
+## <summary>在控件实际布局中心发送鼠标事件，验证点击能到达按钮。</summary>
+## <param name="control">已经完成布局的可点击控件。</param>
+func click(control: Control) -> void:
+	var point = control.get_global_rect().get_center()
+	var motion = InputEventMouseMotion.new()
+	motion.position = point
+	root.push_input(motion, true)
+	for pressed in [true, false]:
+		var event = InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.pressed = pressed
+		event.position = point
+		root.push_input(event, true)
+		await process_frame
+
 func run() -> void:
 	DirAccess.make_dir_recursive_absolute(OUTPUT)
 	game = load("res://scenes/main.tscn").instantiate()
 	root.add_child(game)
 	game.hud.set_dynamic(true)
-	game.world.set_dynamic(true)
+	game._setting("effects", true)
 	await create_timer(0.7).timeout
 	await capture("01-menu")
-	game._action("factions")
+	var window_size = root.size
+	root.size = Vector2i(1100, 720)
+	await create_timer(0.4).timeout
+	await RenderingServer.frame_post_draw
+	assert(root.size == Vector2i(1100, 720), "minimum window size applied")
+	await capture("01-menu-small")
+	await click(game.hud.find_child("StartButton", true, false))
+	assert(game.scene == "factions")
 	await create_timer(0.7).timeout
+	await capture("02-factions-small")
+	root.size = window_size
+	await create_timer(0.4).timeout
 	await capture("02-factions")
-	game._start_game(game.hud.faction_draft)
+	await click(game.hud.faction_cards[2])
+	assert(game.hud.faction_draft.id == "guild")
+	await click(game.hud.find_child("ConfirmFaction", true, false))
+	assert(game.scene == "game" and game.state.faction.id == "guild")
 	await create_timer(1.2).timeout
 	game.hud.notice_panel.hide()
 	await capture("03-hex-map")
@@ -55,4 +83,5 @@ func run() -> void:
 	game.file_dialog.hide()
 	game.queue_free()
 	await process_frame
+	print("VISUAL FLOW PASSED: start / faction card / confirm mouse clicks")
 	quit()

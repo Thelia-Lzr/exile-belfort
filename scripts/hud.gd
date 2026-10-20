@@ -131,14 +131,19 @@ func _ready() -> void:
 	ui_theme.set_stylebox("panel", "TooltipPanel", style(Color("101a21"), CYAN, 1, 12))
 	ui_theme.set_color("font_color", "TooltipLabel", TEXT)
 	theme = ui_theme
-	_make_header()
-	_make_map()
-	_make_sidebar()
-	_make_bottom()
+	_make_content()
+	_make_notice()
 	_make_overlay()
 	move_child(notice_panel, get_child_count() - 1)
 	_decorate_tree(self)
 	get_tree().node_added.connect(_node_added)
+
+## <summary>构建游戏主界面；独立前置场景覆盖此入口，只复用主题和控件。</summary>
+func _make_content() -> void:
+	_make_header()
+	_make_map()
+	_make_sidebar()
+	_make_bottom()
 
 ## <summary>集中装饰所有页面的控件，包括之后创建的设置、势力和存档窗口。</summary>
 func _node_added(node: Node) -> void:
@@ -388,6 +393,9 @@ func _make_map() -> void:
 	## <summary>地图上方的镜头操作提示标签。</summary>
 	var hint = label(self, "SECTOR 01 / 贝尔福    ·    拖动右键 / 中键移动    滚轮缩放    Q E 转向    F 全图", 12, MUTED)
 	hint.position = Vector2(30, 90)
+
+## <summary>创建各场景共用的文字反馈，确保读档或保存失败始终可见。</summary>
+func _make_notice() -> void:
 	notice_panel = panel(self, Color(0.06, 0.1, 0.13, 0.96), GOLD, 12)
 	notice_panel.position = Vector2(36, 124)
 	notice_panel.visible = false
@@ -716,27 +724,6 @@ func hide_overlay() -> void:
 		_animate_in(control, index * 0.045)
 		index += 1
 
-## <summary>构建主菜单，根据是否有存档或当前聚落显示继续入口。</summary>
-## <param name="has_save">本地是否存在手动或自动存档。</param>
-## <param name="has_session">是否已有可继续的当前游戏会话。</param>
-## <returns>无返回值；菜单按钮通过信号通知主控制器。</returns>
-func show_menu(has_save: bool, has_session: bool) -> void:
-	## <summary>纵向排列界面元素的容器。</summary>
-	var column = _overlay_base(540)
-	label(column, "BELFORT / FRONTIER PROTOCOL", 13, CYAN)
-	label(column, "流亡者：贝尔福", 36, TEXT)
-	label(column, "在边地建立聚落。让每一份资源，成为未来。", 16, MUTED)
-	label(column, "正交 2.5D  /  六边形建设  /  回合制生存", 13, GOLD)
-	if has_session:
-		button(column, "继续当前聚落", "resume")
-	if has_save:
-		button(column, "继续存档", "continue")
-	button(column, "建立新聚落  /  选择势力", "factions", Vector2(0, 58))
-	button(column, "读取存档 / 导入原版 JSON", "load")
-	button(column, "声音与显示设置", "settings")
-	button(column, "退出游戏", "quit")
-	label(column, "GODOT EDITION  //  01    ·    本地运行 / 本地存档", 12, MUTED)
-
 ## <summary>构建暂停菜单，提供继续、保存、另存、设置和退出操作。</summary>
 ## <returns>无返回值；显示全屏遮罩。</returns>
 func show_pause() -> void:
@@ -787,13 +774,12 @@ func show_settings(volume: float, muted: bool, effects: bool, fullscreen: bool) 
 	label(column, "1–6 选择建筑  ·  R 旋转  ·  Esc 取消 / 暂停\n右键 / 中键拖动  ·  滚轮缩放  ·  Q / E 转向\nWASD 移动  ·  F 归位  ·  Enter 结束回合\n⌘S 保存  ·  ⌘O 读取  ·  ⌘Z 撤销（兼容 Ctrl）", 14, MUTED)
 	button(column, "返回", "back", Vector2(0, 50))
 
-## <summary>构建四势力旗帜卡片、徽记、名称和背景编辑界面。</summary>
+## <summary>在独立势力场景的内容容器中构建旗帜、徽记和可编辑档案。</summary>
+## <param name="column">全屏场景提供的布局容器。</param>
 ## <param name="current">当前势力数据，用于初始化选择草稿。</param>
 ## <returns>无返回值；确认时发出 faction_confirmed，选择期间只修改草稿。</returns>
-func show_factions(current: Dictionary) -> void:
+func make_faction_content(column: VBoxContainer, current: Dictionary) -> void:
 	faction_draft = current.duplicate()
-	## <summary>纵向排列界面元素的容器。</summary>
-	var column = _overlay_base(1040)
 	label(column, "IDENTITY / 势力档案", 30, TEXT)
 	label(column, "选择旗帜与身份。各势力使用相同规则，不附带隐藏加成。", 14, MUTED)
 	## <summary>排列势力卡片的横向容器。</summary>
@@ -806,7 +792,7 @@ func show_factions(current: Dictionary) -> void:
 		var card = Button.new()
 		card.custom_minimum_size = Vector2(230, 188)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		card.focus_mode = Control.FOCUS_NONE
+		card.focus_mode = Control.FOCUS_ALL
 		cards.add_child(card)
 		## <summary>界面卡片或资源单元内的内容容器。</summary>
 		var content = vbox(card, 6)
@@ -848,9 +834,10 @@ func show_factions(current: Dictionary) -> void:
 	button(actions, "返回", "menu").size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	## <summary>确认势力并建立聚落的按钮。</summary>
 	var begin = Button.new()
+	begin.name = "ConfirmFaction"
 	begin.text = "确认身份 / 建立聚落  →"
 	begin.custom_minimum_size = Vector2(420, 55)
-	begin.focus_mode = Control.FOCUS_NONE
+	begin.focus_mode = Control.FOCUS_ALL
 	begin.add_theme_stylebox_override("normal", style(Color("376054"), CYAN, 1, 14))
 	actions.add_child(begin)
 	## <summary>确认势力时整理名称和背景，再将势力草稿提交给主控制器。</summary>
@@ -872,7 +859,7 @@ func _choose_faction(index: int) -> void:
 	faction_name.text = faction_draft.name
 	faction_description.text = faction_draft.description
 	## <summary>当前势力徽记的 TextureRect。</summary>
-	var emblem = overlay.find_child("DraftEmblem", true, false)
+	var emblem = find_child("DraftEmblem", true, false)
 	emblem.texture = load("res://assets/icons/emblem_" + faction_draft.id + ".svg")
 	_highlight_faction()
 	action_requested.emit("click")

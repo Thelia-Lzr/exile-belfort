@@ -49,15 +49,65 @@ var last_turn_msec = -1000
 ## <summary>上次射线悬停检测时间，降低不必要的检测频率。</summary>
 var last_hover_msec = 0
 
-## <summary>引擎首次将主节点加入场景树后执行；创建并连接模型、界面、三维子视口、声音和信号，读取设置并显示主菜单。</summary>
+## <summary>引擎首次将主节点加入场景树后执行；创建声音和独立开始界面并读取偏好；三维地图延迟到新建或成功读档后创建。</summary>
 ## <returns>无返回值；由 Godot 场景树生命周期自动调用。</returns>
 func _ready() -> void:
 	state.reset()
 	audio = BelfortAudio.new()
 	audio.name = "Audio"
 	add_child(audio)
-	hud = BelfortHUD.new()
-	hud.name = "HUD"
+	_show_menu()
+	_load_preferences()
+	get_tree().auto_accept_quit = false
+
+## <summary>已经建立的游戏场景；前置页面不会预先创建地图，返回菜单后保留会话。</summary>
+var game_hud: BelfortHUD
+
+## <summary>连接独立场景共用的操作、设置与势力确认信号。</summary>
+## <param name="screen">新创建的页面根节点。</param>
+func _connect_screen(screen: BelfortHUD) -> void:
+	screen.dynamic_effects = dynamic_effects
+	screen.action_requested.connect(_action)
+	screen.faction_confirmed.connect(_start_game)
+	screen.setting_changed.connect(_setting)
+
+## <summary>切换到独立前置场景，停用后台游戏输入、动画和三维渲染。</summary>
+## <param name="path">开始或势力选择场景的资源路径。</param>
+## <param name="initial">入树之前设置的会话标志或初始势力。</param>
+func _show_front(path: String, initial: Dictionary) -> void:
+	if is_instance_valid(hud) and hud != game_hud:
+		remove_child(hud)
+		hud.queue_free()
+	if is_instance_valid(game_hud):
+		game_hud.hide()
+		game_hud.process_mode = Node.PROCESS_MODE_DISABLED
+		map_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	hud = load(path).instantiate()
+	for key in initial:
+		hud.set(key, initial[key])
+	_connect_screen(hud)
+	add_child(hud)
+
+## <summary>按需建立游戏场景，或者恢复菜单后保留的地图与界面。</summary>
+func _activate_game() -> void:
+	if is_instance_valid(hud) and hud != game_hud:
+		remove_child(hud)
+		hud.queue_free()
+	if is_instance_valid(game_hud):
+		hud = game_hud
+		hud.show()
+		hud.process_mode = Node.PROCESS_MODE_INHERIT
+		map_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		return
+	_create_game()
+	world.set_dynamic(dynamic_effects)
+	hud.set_dynamic(dynamic_effects)
+
+## <summary>创建游戏场景的三维子视口并接上原有地图、建筑和声音信号。</summary>
+func _create_game() -> void:
+	game_hud = load("res://scenes/game.tscn").instantiate()
+	hud = game_hud
+	_connect_screen(hud)
 	add_child(hud)
 	map_viewport = SubViewport.new()
 	map_viewport.name = "WorldViewport"
@@ -77,21 +127,13 @@ func _ready() -> void:
 	world.building_finished.connect(func(): audio.play("build"))
 	hud.map_container.gui_input.connect(_map_input)
 	hud.map_container.mouse_exited.connect(_map_exited)
-	hud.action_requested.connect(_action)
 	hud.build_requested.connect(_choose)
-	hud.faction_confirmed.connect(_start_game)
-	hud.setting_changed.connect(_setting)
-	_load_preferences()
-	world.rebuild(state)
-	_refresh()
-	_show_menu()
-	get_tree().auto_accept_quit = false
 
 ## <summary>每帧处理 WASD 镜头平移，并以节流频率刷新镜头移动后的鼠标射线命中。菜单或文件对话框打开时不处理地图。</summary>
 ## <param name="delta">本帧与上一帧的间隔秒数；镜头 pan 中则表示屏幕像素方向的移动量。</param>
 ## <returns>无返回值；修改显示或交互状态，不推进游戏回合。</returns>
 func _process(delta: float) -> void:
-	if scene != "game" or file_dialog != null and file_dialog.visible:
+	if scene != "game" or is_instance_valid(file_dialog) and file_dialog.visible:
 		return
 	## <summary>镜头移动方向、射线方向或帐篷方向档位。</summary>
 	var direction = Vector2.ZERO
@@ -215,7 +257,7 @@ func _click_cell(cell: Vector2i) -> void:
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not event is InputEventKey or not event.pressed or event.echo:
 		return
-	if file_dialog != null and file_dialog.visible:
+	if is_instance_valid(file_dialog) and file_dialog.visible:
 		return
 	if event.keycode == KEY_F11:
 		_setting("fullscreen", DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_FULLSCREEN)
@@ -281,6 +323,7 @@ func _start_game(faction: Dictionary) -> void:
 		return
 	state.faction = faction
 	state.reset()
+	_activate_game()
 	session_started = true
 	scene = "game"
 	chosen = ""
@@ -299,8 +342,9 @@ func _show_menu() -> void:
 	scene = "menu"
 	chosen = ""
 	dragging = false
-	world.preview(Vector2i(-1, -1), "", 0)
-	hud.show_menu(FileAccess.file_exists(SAVE_PATH) or FileAccess.file_exists(AUTO_PATH), session_started)
+	if is_instance_valid(world):
+		world.preview(Vector2i(-1, -1), "", 0)
+	_show_front("res://scenes/start_menu.tscn", {"has_save": FileAccess.file_exists(SAVE_PATH) or FileAccess.file_exists(AUTO_PATH), "has_session": session_started})
 
 ## <summary>统一分派菜单、建造工具、存档和回合操作。</summary>
 ## <param name="action">按钮或菜单操作标识，例如 save、pause、next_turn。</param>
@@ -312,9 +356,10 @@ func _action(action: String) -> void:
 		"click": pass
 		"factions":
 			scene = "factions"
-			hud.show_factions(state.faction)
+			_show_front("res://scenes/faction_selection.tscn", {"initial_faction": state.faction})
 		"resume":
 			if session_started:
+				_activate_game()
 				scene = "game"
 				hud.hide_overlay()
 				_refresh()
@@ -331,6 +376,7 @@ func _action(action: String) -> void:
 			scene = return_scene
 			if scene == "game": hud.hide_overlay()
 			elif scene == "pause": hud.show_pause()
+			elif scene == "factions": hud.hide_overlay()
 			else: _show_menu()
 		"menu":
 			if not session_started or _save(AUTO_PATH, false):
@@ -421,6 +467,7 @@ func _load_file(path: String) -> void:
 		hud.notify("读取失败：" + error, true)
 		audio.play("error")
 		return
+	_activate_game()
 	session_started = true
 	scene = "game"
 	chosen = ""
@@ -437,7 +484,7 @@ func _load_file(path: String) -> void:
 ## <param name="saving">true 打开保存窗口；false 打开读取窗口。</param>
 ## <returns>无返回值；文件窗口可见时地图快捷键暂不处理。</returns>
 func _open_file_dialog(saving: bool) -> void:
-	if file_dialog != null:
+	if is_instance_valid(file_dialog):
 		file_dialog.queue_free()
 	file_dialog = FileDialog.new()
 	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
@@ -467,7 +514,8 @@ func _setting(key: String, value: Variant) -> void:
 		"effects":
 			dynamic_effects = bool(value)
 			hud.set_dynamic(dynamic_effects)
-			world.set_dynamic(dynamic_effects)
+			if is_instance_valid(world): world.set_dynamic(dynamic_effects)
+			if is_instance_valid(game_hud): game_hud.set_dynamic(dynamic_effects)
 			for backdrop in hud.overlay.find_children("*", "Control", true, false):
 				if backdrop is BelfortFactionBackdrop:
 					backdrop.animation_enabled = dynamic_effects
@@ -496,7 +544,7 @@ func _load_preferences() -> void:
 	audio.set_volume(float(config.get_value("audio", "volume", 0.65)))
 	audio.muted = bool(config.get_value("audio", "muted", false))
 	dynamic_effects = bool(config.get_value("display", "effects", true))
-	world.set_dynamic(dynamic_effects)
+	if is_instance_valid(world): world.set_dynamic(dynamic_effects)
 	hud.set_dynamic(dynamic_effects)
 	if config.get_value("display", "fullscreen", false):
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
